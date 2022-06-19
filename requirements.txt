@@ -1,0 +1,6 @@
+torch==1.11.0
+torch-scatter -f https://data.pyg.org/whl/torch-1.11.0+cu113.html
+torch-sparse -f https://data.pyg.org/whl/torch-1.11.0+cu113.html
+torch-geometric==2.0.4
+pytorch-lightning==1.6.4
+torchmetrics==0.9.1
