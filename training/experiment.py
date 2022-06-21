@@ -7,17 +7,9 @@ import warnings
 import numpy as np
 import pytorch_lightning as pl
 import torch
+from torch_geometric import seed_everything
 
 from qm_property_predictor import lit_models
-
-
-def set_seed(seed):
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    np.random.seed(seed)
-    random.seed(seed)
 
 
 def _import_class(module_and_class_name: str) -> type:
@@ -34,9 +26,7 @@ def _setup_parser():
 
     # Add Trainer specific arguments, such as --max_epochs, --gpus, --precision
     trainer_parser = pl.Trainer.add_argparse_args(parser)
-    trainer_parser._action_groups[
-        1
-    ].title = "Trainer Args"  # pylint: disable=protected-access
+    trainer_parser._action_groups[1].title = "Trainer Args"  # pylint: disable=protected-access
     parser = argparse.ArgumentParser(add_help=False, parents=[trainer_parser])
 
     # Basic arguments
@@ -47,16 +37,14 @@ def _setup_parser():
 
     # Get the data and model classes, so that we can add their specific arguments
     temp_args, _ = parser.parse_known_args()
-    data_class = _import_class(
-        f"qm_property_predictor.data.{temp_args.data_class}"
-    )
+    data_class = _import_class(f"qm_property_predictor.data.{temp_args.data_class}")
 
     model_class = _import_class(  # noqa: F841
         f"qm_property_predictor.models.{temp_args.model_class}"
     )
 
     # Set seed
-    set_seed(temp_args.seed)
+    seed_everything(temp_args.seed)
 
     # Get data, model, and LitModel specific arguments
     data_group = parser.add_argument_group("Data Args")
@@ -83,9 +71,7 @@ def main():
     parser = _setup_parser()
     args = parser.parse_args()
     data_class = _import_class(f"qm_property_predictor.data.{args.data_class}")
-    model_class = _import_class(
-        f"qm_property_predictor.models.{args.model_class}"
-    )
+    model_class = _import_class(f"qm_property_predictor.models.{args.model_class}")
     data = data_class(args)
     model = model_class(args=args)
 
@@ -108,16 +94,14 @@ def main():
         mode="min",
         dirpath="training/logs",
     )
-    model_summary_callback = pl.callbacks.ModelSummary(max_depth=3)
+    model_summary_callback = pl.callbacks.ModelSummary(max_depth=10)
     callbacks = [
         early_stopping_callback,
         model_checkpoint_callback,
         model_summary_callback,
     ]
 
-    trainer = pl.Trainer.from_argparse_args(
-        args, callbacks=callbacks, logger=logger
-    )
+    trainer = pl.Trainer.from_argparse_args(args, callbacks=callbacks, logger=logger)
 
     # Ignore batch size warning from PL
     warnings.filterwarnings(
