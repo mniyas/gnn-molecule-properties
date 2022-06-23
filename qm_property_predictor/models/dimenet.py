@@ -17,9 +17,8 @@ from torch_geometric.nn.acts import swish
 from torch_geometric.nn.inits import glorot_orthogonal
 from torch_scatter import scatter
 from torch_sparse import SparseTensor
-import sympy as sym
-from torch_geometric.nn.models.dimenet_utils import bessel_basis, real_sph_harm
 
+from .mm_utils import BesselBasisLayer, SphericalBasisLayer
 
 HIDDEN_CHANNELS = 128
 OUT_CHANNELS = 1
@@ -47,82 +46,6 @@ qm9_target_dict = {
     10: "G",
     11: "Cv",
 }
-
-
-class Envelope(torch.nn.Module):
-    def __init__(self, exponent):
-        super().__init__()
-        self.p = exponent + 1
-        self.a = -(self.p + 1) * (self.p + 2) / 2
-        self.b = self.p * (self.p + 2)
-        self.c = -self.p * (self.p + 1) / 2
-
-    def forward(self, x):
-        p, a, b, c = self.p, self.a, self.b, self.c
-        x_pow_p0 = x.pow(p - 1)
-        x_pow_p1 = x_pow_p0 * x
-        x_pow_p2 = x_pow_p1 * x
-        return 1.0 / x + a * x_pow_p0 + b * x_pow_p1 + c * x_pow_p2
-
-
-class BesselBasisLayer(torch.nn.Module):
-    def __init__(self, num_radial, cutoff=5.0, envelope_exponent=5):
-        super().__init__()
-        self.cutoff = cutoff
-        self.envelope = Envelope(envelope_exponent)
-
-        self.freq = torch.nn.Parameter(torch.Tensor(num_radial))
-
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        # torch.arange(1, self.freq.numel() + 1, out=self.freq).mul_(PI)
-        with torch.no_grad():
-            torch.arange(1, self.freq.numel() + 1, out=self.freq).mul_(PI)
-        self.freq.requires_grad_()
-
-    def forward(self, dist):
-        dist = dist.unsqueeze(-1) / self.cutoff
-        return self.envelope(dist) * (self.freq * dist).sin()
-
-
-class SphericalBasisLayer(torch.nn.Module):
-    def __init__(self, num_spherical, num_radial, cutoff=5.0, envelope_exponent=5):
-        super().__init__()
-        assert num_radial <= 64
-        self.num_spherical = num_spherical
-        self.num_radial = num_radial
-        self.cutoff = cutoff
-        self.envelope = Envelope(envelope_exponent)
-
-        bessel_forms = bessel_basis(num_spherical, num_radial)
-        sph_harm_forms = real_sph_harm(num_spherical)
-        self.sph_funcs = []
-        self.bessel_funcs = []
-
-        x, theta = sym.symbols("x theta")
-        modules = {"sin": torch.sin, "cos": torch.cos}
-        for i in range(num_spherical):
-            if i == 0:
-                sph1 = sym.lambdify([theta], sph_harm_forms[i][0], modules)(0)
-                self.sph_funcs.append(lambda x: torch.zeros_like(x) + sph1)
-            else:
-                sph = sym.lambdify([theta], sph_harm_forms[i][0], modules)
-                self.sph_funcs.append(sph)
-            for j in range(num_radial):
-                bessel = sym.lambdify([x], bessel_forms[i][j], modules)
-                self.bessel_funcs.append(bessel)
-
-    def forward(self, dist, angle, idx_kj):
-        dist = dist / self.cutoff
-        rbf = torch.stack([f(dist) for f in self.bessel_funcs], dim=1)
-        rbf = self.envelope(dist).unsqueeze(-1) * rbf
-
-        cbf = torch.stack([f(angle) for f in self.sph_funcs], dim=1)
-
-        n, k = self.num_spherical, self.num_radial
-        out = (rbf[idx_kj].view(-1, n, k) * cbf.view(-1, n, 1)).view(-1, n * k)
-        return out
 
 
 class EmbeddingBlock(torch.nn.Module):
@@ -319,8 +242,10 @@ class DimeNet(torch.nn.Module):
         num_before_skip = self.args.get("num_before_skip", NUM_BEFORE_SKIP)
         num_after_skip = self.args.get("num_after_skip", NUM_AFTER_SKIP)
         act = swish
-        self.rbf = BesselBasisLayer(num_radial, self.cutoff, envelope_exponent)
-        self.sbf = SphericalBasisLayer(num_spherical, num_radial, self.cutoff, envelope_exponent)
+        self.rbf = BesselBasisLayer("DimeNet", num_radial, self.cutoff, envelope_exponent)
+        self.sbf = SphericalBasisLayer(
+            "DimeNet", num_spherical, num_radial, self.cutoff, envelope_exponent
+        )
 
         self.emb = EmbeddingBlock(num_radial, hidden_channels, act)
 
@@ -409,15 +334,15 @@ class DimeNet(torch.nn.Module):
 
     @staticmethod
     def add_to_argparse(parser):
-        parser.add_argument("HIDDEN_CHANNELS", type=int, default=HIDDEN_CHANNELS)
-        parser.add_argument("OUT_CHANNELS", type=int, default=OUT_CHANNELS)
-        parser.add_argument("NUM_BLOCKS", type=int, default=NUM_BLOCKS)
-        parser.add_argument("NUM_BILINEAR", type=int, default=NUM_BILINEAR)
-        parser.add_argument("NUM_SPHERICAL", type=int, default=NUM_SPHERICAL)
-        parser.add_argument("NUM_RADIAL", type=int, default=NUM_RADIAL)
-        parser.add_argument("CUTOFF", type=float, default=CUTOFF)
-        parser.add_argument("ENVELOPE_EXPONENT", type=int, default=ENVELOPE_EXPONENT)
-        parser.add_argument("NUM_BEFORE_SKIP", type=int, default=NUM_BEFORE_SKIP)
-        parser.add_argument("NUM_AFTER_SKIP", type=int, default=NUM_AFTER_SKIP)
-        parser.add_argument("NUM_OUTPUT_LAYERS", type=int, default=NUM_OUTPUT_LAYERS)
+        parser.add_argument("--hidden_channels", type=int, default=HIDDEN_CHANNELS)
+        parser.add_argument("--out_channels", type=int, default=OUT_CHANNELS)
+        parser.add_argument("--num_blocks", type=int, default=NUM_BLOCKS)
+        parser.add_argument("--num_bilinear", type=int, default=NUM_BILINEAR)
+        parser.add_argument("--num_spherical", type=int, default=NUM_SPHERICAL)
+        parser.add_argument("--num_radial", type=int, default=NUM_RADIAL)
+        parser.add_argument("--cutoff", type=float, default=CUTOFF)
+        parser.add_argument("--envelope_exponent", type=int, default=ENVELOPE_EXPONENT)
+        parser.add_argument("--num_before_skip", type=int, default=NUM_BEFORE_SKIP)
+        parser.add_argument("--num_after_skip", type=int, default=NUM_AFTER_SKIP)
+        parser.add_argument("--num_output_layers", type=int, default=NUM_OUTPUT_LAYERS)
         return parser

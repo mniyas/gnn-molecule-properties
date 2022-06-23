@@ -56,10 +56,6 @@ class MPNN(torch.nn.Module):
 
     @staticmethod
     def add_to_argparse(parser):
-        parser.add_argument(
-            "--num_node_features", type=int, default=NUM_NODE_FEAT
-        )
-        parser.add_argument(
-            "--num_edge_features", type=int, default=NUM_EDGE_FEAT
-        )
+        parser.add_argument("--num_node_features", type=int, default=NUM_NODE_FEAT)
+        parser.add_argument("--num_edge_features", type=int, default=NUM_EDGE_FEAT)
         return parser

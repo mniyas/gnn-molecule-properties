@@ -51,6 +51,7 @@ def _setup_parser():
     data_class.add_to_argparse(data_group)
 
     model_group = parser.add_argument_group("Model Args")  # noqa: F841
+    model_class.add_to_argparse(model_group)
 
     lit_model_group = parser.add_argument_group("LitModel Args")
     lit_models.BaseLitModel.add_to_argparse(lit_model_group)

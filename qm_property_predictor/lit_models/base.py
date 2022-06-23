@@ -31,10 +31,8 @@ class BaseLitModel(pl.LightningModule):  # pylint: disable=too-many-ancestors
         self.loss_fn = getattr(torch.nn.functional, loss)
 
         self.one_cycle_max_lr = self.args.get("one_cycle_max_lr", None)
-        self.one_cycle_total_steps = self.args.get(
-            "one_cycle_total_steps", ONE_CYCLE_TOTAL_STEPS
-        )
-
+        self.one_cycle_total_steps = self.args.get("one_cycle_total_steps", ONE_CYCLE_TOTAL_STEPS)
+        # TODO: Evaluate MAE calculation method
         self.train_mae = MeanAbsoluteError()
         self.val_mae = MeanAbsoluteError()
         self.test_mae = MeanAbsoluteError()
@@ -49,9 +47,7 @@ class BaseLitModel(pl.LightningModule):  # pylint: disable=too-many-ancestors
         )
         parser.add_argument("--lr", type=float, default=LR)
         parser.add_argument("--one_cycle_max_lr", type=float, default=None)
-        parser.add_argument(
-            "--one_cycle_total_steps", type=int, default=ONE_CYCLE_TOTAL_STEPS
-        )
+        parser.add_argument("--one_cycle_total_steps", type=int, default=ONE_CYCLE_TOTAL_STEPS)
         parser.add_argument(
             "--loss",
             type=str,
@@ -75,12 +71,11 @@ class BaseLitModel(pl.LightningModule):  # pylint: disable=too-many-ancestors
             "monitor": "val_loss",
         }
 
+    # TODO: Evaluate forward method
     def forward(self, x):
         return self.model(x)
 
-    def training_step(
-        self, batch, batch_idx
-    ):  # pylint: disable=unused-argument
+    def training_step(self, batch, batch_idx):  # pylint: disable=unused-argument
         output = self(batch)
         loss = self.loss_fn(output, batch.y[:, self.target_idx].unsqueeze(1))
         self.log("train_loss", loss)
@@ -88,12 +83,12 @@ class BaseLitModel(pl.LightningModule):  # pylint: disable=too-many-ancestors
         self.log("train_mae", self.train_mae, on_step=False, on_epoch=True)
         return loss
 
-    def validation_step(
-        self, batch, batch_idx
-    ):  # pylint: disable=unused-argument
+    def validation_step(self, batch, batch_idx):  # pylint: disable=unused-argument
         output = self(batch)
         loss = self.loss_fn(output, batch.y[:, self.target_idx].unsqueeze(1))
         self.log("val_loss", loss, prog_bar=True)
+        print("*" * 100)
+        print(output.shape, batch.y[:, self.target_idx].unsqueeze(1).shape)
         self.val_mae(output, batch.y[:, self.target_idx].unsqueeze(1))
         self.log(
             "val_mae",
