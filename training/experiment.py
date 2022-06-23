@@ -30,6 +30,7 @@ def _setup_parser():
     parser = argparse.ArgumentParser(add_help=False, parents=[trainer_parser])
 
     # Basic arguments
+    parser.add_argument("--dev_mode", type=bool, default=False)
     parser.add_argument("--seed", type=str, default=42)
     parser.add_argument("--data_class", type=str, default="PyG_QM9")
     parser.add_argument("--model_class", type=str, default="MPNN")
@@ -95,14 +96,25 @@ def main():
         mode="min",
         dirpath="training/logs",
     )
-    model_summary_callback = pl.callbacks.ModelSummary(max_depth=10)
+    model_summary_callback = pl.callbacks.ModelSummary(max_depth=-1)
     callbacks = [
         early_stopping_callback,
         model_checkpoint_callback,
         model_summary_callback,
     ]
-
-    trainer = pl.Trainer.from_argparse_args(args, callbacks=callbacks, logger=logger)
+    if args.dev_mode:
+        trainer = pl.Trainer.from_argparse_args(
+            args,
+            callbacks=callbacks,
+            logger=logger,
+            fast_dev_run=True,
+            limit_train_batches=0.1,
+            limit_val_batches=0.01,
+            num_sanity_val_steps=2,
+            overfit_batches=0.01,
+        )
+    else:
+        trainer = pl.Trainer.from_argparse_args(args, callbacks=callbacks, logger=logger)
 
     # Ignore batch size warning from PL
     warnings.filterwarnings(

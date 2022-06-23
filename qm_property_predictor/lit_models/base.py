@@ -80,20 +80,18 @@ class BaseLitModel(pl.LightningModule):  # pylint: disable=too-many-ancestors
         loss = self.loss_fn(output, batch.y[:, self.target_idx].unsqueeze(1))
         self.log("train_loss", loss)
         self.train_mae(output, batch.y[:, self.target_idx].unsqueeze(1))
-        self.log("train_mae", self.train_mae, on_step=False, on_epoch=True)
+        self.log("train_mae", self.train_mae, on_step=False, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):  # pylint: disable=unused-argument
         output = self(batch)
         loss = self.loss_fn(output, batch.y[:, self.target_idx].unsqueeze(1))
         self.log("val_loss", loss, prog_bar=True)
-        print("*" * 100)
-        print(output.shape, batch.y[:, self.target_idx].unsqueeze(1).shape)
         self.val_mae(output, batch.y[:, self.target_idx].unsqueeze(1))
         self.log(
             "val_mae",
             self.val_mae,
-            on_step=False,
+            on_step=True,
             on_epoch=True,
             prog_bar=True,
         )
@@ -101,4 +99,10 @@ class BaseLitModel(pl.LightningModule):  # pylint: disable=too-many-ancestors
     def test_step(self, batch, batch_idx):  # pylint: disable=unused-argument
         output = self(batch)
         self.test_mae(output, batch.y[:, self.target_idx].unsqueeze(1))
-        self.log("test_mae", self.test_mae, on_step=False, on_epoch=True)
+        self.log(
+            "test_mae",
+            self.test_mae,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
