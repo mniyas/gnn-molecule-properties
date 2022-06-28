@@ -4,6 +4,8 @@ import pytorch_lightning as pl
 import torch
 from torchmetrics import MeanAbsoluteError
 
+from ..models import MPNN
+
 TARGET_IDX = 1
 OPTIMIZER = "Adam"
 LR = 1e-3
@@ -21,7 +23,10 @@ class BaseLitModel(pl.LightningModule):  # pylint: disable=too-many-ancestors
         self.model = model
         self.args = vars(args) if args is not None else {}
 
-        self.target_idx = self.args.get("self.target_idx", TARGET_IDX)
+        self.target_idx = self.args.get("target_idx", TARGET_IDX)
+        # All models except MPNN uses the atomization energy for targets U0, U, H, and G.
+        if not isinstance(model, MPNN) and self.target_idx in [7, 8, 9, 10]:
+            self.target_idx = self.target_idx + 5
         optimizer = self.args.get("optimizer", OPTIMIZER)
         self.optimizer_class = getattr(torch.optim, optimizer)
 
@@ -45,6 +50,7 @@ class BaseLitModel(pl.LightningModule):  # pylint: disable=too-many-ancestors
             default=OPTIMIZER,
             help="optimizer class from torch.optim",
         )
+        parser.add_argument("--target_idx", type=int, default=TARGET_IDX)
         parser.add_argument("--lr", type=float, default=LR)
         parser.add_argument("--one_cycle_max_lr", type=float, default=None)
         parser.add_argument("--one_cycle_total_steps", type=int, default=ONE_CYCLE_TOTAL_STEPS)
