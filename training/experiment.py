@@ -1,14 +1,12 @@
 """Experiment-running framework."""
 import argparse
 import importlib
-import random
 import warnings
 
-import numpy as np
 import pytorch_lightning as pl
-import torch
 from torch_geometric import seed_everything
 
+import wandb
 from qm_property_predictor import lit_models
 
 
@@ -30,6 +28,7 @@ def _setup_parser():
     parser = argparse.ArgumentParser(add_help=False, parents=[trainer_parser])
 
     # Basic arguments
+    parser.add_argument("--wandb", action="store_true", default=False)
     parser.add_argument("--dev_mode", type=bool, default=False)
     parser.add_argument("--seed", type=str, default=42)
     parser.add_argument("--data_class", type=str, default="PyG_QM9")
@@ -67,7 +66,7 @@ def main():
 
     Sample command:
     ```
-    python training/experiment.py --max_epochs=3 --gpus='0,' --num_workers=4 --model_class=MPNN --data_class=PyG_QM9
+    python training/experiment.py --wandb --max_epochs=3 --gpus='0,' --num_workers=4 --model_class=MPNN --data_class=PyG_QM9
     ```
     """
     parser = _setup_parser()
@@ -86,12 +85,16 @@ def main():
         lit_model = lit_model_class(args=args, model=model)
 
     logger = pl.loggers.TensorBoardLogger("training/logs")
+    if args.wandb:
+        logger = pl.loggers.WandbLogger()
+        logger.watch(model)
+        logger.log_hyperparams(vars(args))
 
     early_stopping_callback = pl.callbacks.EarlyStopping(
         monitor="val_loss", mode="min", patience=10
     )
     model_checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        filename="{epoch:03d}-{val_loss:.3f}-{val_cer:.3f}",
+        filename="{args.model_class}-{args.target_idx}-{epoch:03d}-{val_loss:.3f}-{val_cer:.3f}",
         monitor="val_loss",
         mode="min",
         dirpath="training/logs",
@@ -129,6 +132,12 @@ def main():
     trainer.fit(lit_model, datamodule=data)
     trainer.test(lit_model, datamodule=data)
     # pylint: enable=no-member
+    best_model_path = model_checkpoint_callback.best_model_path
+    if best_model_path:
+        print("Best model saved at:", best_model_path)
+        if args.wandb:
+            wandb.save(best_model_path)
+            print("Best model also uploaded to W&B")
 
 
 if __name__ == "__main__":
