@@ -21,4 +21,9 @@ class PyG_QM9(BaseDataModule):
     def setup(self, stage=None) -> None:
         """Split into train, val, test, and set dims."""
         qm9_full = QM9(self.data_dir)
-        self.data_train, self.data_val, self.data_test = random_split(qm9_full, [110000, 10831, 10000])  # type: ignore
+        # self.data_train, self.data_val, self.data_test = random_split(qm9_full, [110000, 10831, 10000])  # type: ignore
+        self.data_train, self.data_val, self.data_test = (
+            qm9_full[:110000],
+            qm9_full[110000:120000],
+            qm9_full[120000:],
+        )

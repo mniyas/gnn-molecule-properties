@@ -30,10 +30,13 @@ def _setup_parser():
     # Basic arguments
     parser.add_argument("--wandb", action="store_true", default=False)
     parser.add_argument("--dev_mode", type=bool, default=False)
-    parser.add_argument("--seed", type=str, default=42)
+    parser.add_argument("--seed", type=str, default=920)
     parser.add_argument("--data_class", type=str, default="PyG_QM9")
     parser.add_argument("--model_class", type=str, default="MPNN")
     parser.add_argument("--load_checkpoint", type=str, default=None)
+
+    # Additional Generic arguments
+    parser.add_argument("--gradient_clip_val", type=int, default=1000)
 
     # Get the data and model classes, so that we can add their specific arguments
     temp_args, _ = parser.parse_known_args()
