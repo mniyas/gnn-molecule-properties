@@ -35,9 +35,6 @@ def _setup_parser():
     parser.add_argument("--model_class", type=str, default="MPNN")
     parser.add_argument("--load_checkpoint", type=str, default=None)
 
-    # Additional Generic arguments
-    parser.add_argument("--gradient_clip_val", type=int, default=1000)
-
     # Get the data and model classes, so that we can add their specific arguments
     temp_args, _ = parser.parse_known_args()
     data_class = _import_class(f"qm_property_predictor.data.{temp_args.data_class}")
@@ -103,10 +100,12 @@ def main():
         dirpath="training/logs",
     )
     model_summary_callback = pl.callbacks.ModelSummary(max_depth=-1)
+    lr_monitor_callback = pl.callbacks.LearningRateMonitor(logging_interval="step")
     callbacks = [
         early_stopping_callback,
         model_checkpoint_callback,
         model_summary_callback,
+        lr_monitor_callback,
     ]
     if args.dev_mode:
         trainer = pl.Trainer.from_argparse_args(

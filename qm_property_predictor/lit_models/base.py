@@ -8,9 +8,11 @@ from ..models import MPNN
 
 TARGET_IDX = 1
 OPTIMIZER = "Adam"
+SCHEDULER = "OneCyleLR"
 LR = 1e-3
 LOSS = "l1_loss"
 ONE_CYCLE_TOTAL_STEPS = 100
+EXP_GAMMA = 0.9961697
 
 
 class BaseLitModel(pl.LightningModule):  # pylint: disable=too-many-ancestors
@@ -29,6 +31,8 @@ class BaseLitModel(pl.LightningModule):  # pylint: disable=too-many-ancestors
             self.target_idx = self.target_idx + 5
         optimizer = self.args.get("optimizer", OPTIMIZER)
         self.optimizer_class = getattr(torch.optim, optimizer)
+        scheduler = self.args.get("scheduler", SCHEDULER)
+        self.scheduler_class = getattr(torch.optim, scheduler)
 
         self.lr = self.args.get("lr", LR)
 
@@ -37,6 +41,7 @@ class BaseLitModel(pl.LightningModule):  # pylint: disable=too-many-ancestors
 
         self.one_cycle_max_lr = self.args.get("one_cycle_max_lr", None)
         self.one_cycle_total_steps = self.args.get("one_cycle_total_steps", ONE_CYCLE_TOTAL_STEPS)
+        self.exponential_gamma = self.args.get("exponential_gamma", EXP_GAMMA)
         # TODO: Evaluate MAE calculation method
         self.train_mae = MeanAbsoluteError()
         self.val_mae = MeanAbsoluteError()
@@ -52,8 +57,15 @@ class BaseLitModel(pl.LightningModule):  # pylint: disable=too-many-ancestors
         )
         parser.add_argument("--target_idx", type=int, default=TARGET_IDX)
         parser.add_argument("--lr", type=float, default=LR)
+        parser.add_argument(
+            "--lr_scheduler",
+            type=str,
+            default="OneCycleLR",
+            help="LR Scheduler class from torch.optim.lr_scheduler",
+        )
         parser.add_argument("--one_cycle_max_lr", type=float, default=None)
         parser.add_argument("--one_cycle_total_steps", type=int, default=ONE_CYCLE_TOTAL_STEPS)
+        parser.add_argument("--exponential_gamma", type=float, default=EXP_GAMMA)
         parser.add_argument(
             "--loss",
             type=str,
@@ -66,11 +78,16 @@ class BaseLitModel(pl.LightningModule):  # pylint: disable=too-many-ancestors
         optimizer = self.optimizer_class(self.parameters(), lr=self.lr)
         if self.one_cycle_max_lr is None:
             return optimizer
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(
-            optimizer=optimizer,
-            max_lr=self.one_cycle_max_lr,
-            total_steps=self.one_cycle_total_steps,
-        )
+        if isinstance(self.scheduler_class, torch.optim.lr_scheduler.OneCycleLR):
+            scheduler = torch.optim.lr_scheduler.OneCycleLR(
+                optimizer=optimizer,
+                max_lr=self.one_cycle_max_lr,
+                total_steps=self.one_cycle_total_steps,
+            )
+        else:
+            scheduler = torch.optim.lr_scheduler.ExponentialLR(
+                optimizer, gamma=self.exponential_gamma
+            )
         return {
             "optimizer": optimizer,
             "lr_scheduler": scheduler,
