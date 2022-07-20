@@ -90,9 +90,9 @@ def main():
         logger.watch(model)
         logger.log_hyperparams(vars(args))
 
-    early_stopping_callback = pl.callbacks.EarlyStopping(
-        monitor="val_loss", mode="min", patience=10
-    )
+    # early_stopping_callback = pl.callbacks.EarlyStopping(
+    #     monitor="val_loss", mode="min", patience=10
+    # )
     model_checkpoint_callback = pl.callbacks.ModelCheckpoint(
         filename="{args.model_class}-{args.target_idx}-{epoch:03d}-{val_loss:.3f}-{val_cer:.3f}",
         monitor="val_loss",
@@ -102,7 +102,7 @@ def main():
     model_summary_callback = pl.callbacks.ModelSummary(max_depth=-1)
     lr_monitor_callback = pl.callbacks.LearningRateMonitor(logging_interval="step")
     callbacks = [
-        early_stopping_callback,
+        # early_stopping_callback,
         model_checkpoint_callback,
         model_summary_callback,
         lr_monitor_callback,

@@ -8,7 +8,7 @@ from ..models import MPNN
 
 TARGET_IDX = 1
 OPTIMIZER = "Adam"
-SCHEDULER = "OneCyleLR"
+SCHEDULER = "OneCycleLR"
 LR = 1e-3
 LOSS = "l1_loss"
 ONE_CYCLE_TOTAL_STEPS = 100
@@ -31,8 +31,8 @@ class BaseLitModel(pl.LightningModule):  # pylint: disable=too-many-ancestors
             self.target_idx = self.target_idx + 5
         optimizer = self.args.get("optimizer", OPTIMIZER)
         self.optimizer_class = getattr(torch.optim, optimizer)
-        scheduler = self.args.get("scheduler", SCHEDULER)
-        self.scheduler_class = getattr(torch.optim, scheduler)
+        scheduler = self.args.get("lr_scheduler", SCHEDULER)
+        self.scheduler_class = getattr(torch.optim.lr_scheduler, scheduler)
 
         self.lr = self.args.get("lr", LR)
 
