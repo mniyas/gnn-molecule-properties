@@ -33,6 +33,7 @@ def _setup_parser():
     parser.add_argument("--seed", type=str, default=920)
     parser.add_argument("--data_class", type=str, default="PyG_QM9")
     parser.add_argument("--model_class", type=str, default="MPNN")
+    parser.add_argument("--log_dir", type=str, default="training/logs")
     parser.add_argument("--load_checkpoint", type=str, default=None)
 
     # Get the data and model classes, so that we can add their specific arguments
@@ -84,7 +85,7 @@ def main():
     else:
         lit_model = lit_model_class(args=args, model=model)
 
-    logger = pl.loggers.TensorBoardLogger("training/logs")
+    logger = pl.loggers.TensorBoardLogger(args.log_dir)
     if args.wandb:
         logger = pl.loggers.WandbLogger()
         logger.watch(model)
@@ -97,7 +98,7 @@ def main():
         filename="{args.model_class}-{args.target_idx}-{epoch:03d}-{val_loss:.3f}-{val_cer:.3f}",
         monitor="val_loss",
         mode="min",
-        dirpath="training/logs",
+        dirpath=args.log_dir,
     )
     model_summary_callback = pl.callbacks.ModelSummary(max_depth=-1)
     lr_monitor_callback = pl.callbacks.LearningRateMonitor(logging_interval="step")
