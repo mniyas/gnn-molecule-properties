@@ -4,7 +4,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import MessagePassing, global_add_pool, radius_graph, Set2Set
+from torch_geometric.nn import MessagePassing, Set2Set, global_add_pool, radius_graph
 from torch_geometric.utils import add_self_loops, remove_self_loops
 from torch_scatter import scatter
 from torch_sparse import SparseTensor
