@@ -29,6 +29,7 @@ def _setup_parser():
 
     # Basic arguments
     parser.add_argument("--wandb", action="store_true", default=False)
+    parser.add_argument("--debug_mode", type=bool, default=False)
     parser.add_argument("--dev_mode", type=bool, default=False)
     parser.add_argument("--seed", type=str, default=920)
     parser.add_argument("--data_class", type=str, default="PyG_QM9")
@@ -108,7 +109,7 @@ def main():
         model_summary_callback,
         lr_monitor_callback,
     ]
-    if args.dev_mode:
+    if args.debug_mode:
         trainer = pl.Trainer.from_argparse_args(
             args,
             callbacks=callbacks,
@@ -118,6 +119,14 @@ def main():
             limit_val_batches=0.01,
             num_sanity_val_steps=2,
             overfit_batches=0.01,
+        )
+    elif args.dev_mode:
+        trainer = pl.Trainer.from_argparse_args(
+            args,
+            callbacks=callbacks,
+            logger=logger,
+            limit_train_batches=0.1,
+            limit_val_batches=0.02,
         )
     else:
         trainer = pl.Trainer.from_argparse_args(args, callbacks=callbacks, logger=logger)

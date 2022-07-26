@@ -222,9 +222,9 @@ class MXMNet(nn.Module):
 
         self.embeddings = nn.Parameter(torch.ones((5, self.dim)))
 
-        self.rbf_l = BesselBasisLayer("MXMNet", 16, 5, envelope_exponent)
-        self.rbf_g = BesselBasisLayer("MXMNet", 16, self.cutoff, envelope_exponent)
-        self.sbf = SphericalBasisLayer("MXMNet", num_spherical, num_radial, 5, envelope_exponent)
+        self.rbf_l = BesselBasisLayer(16, 5, envelope_exponent)
+        self.rbf_g = BesselBasisLayer(16, self.cutoff, envelope_exponent)
+        self.sbf = SphericalBasisLayer(num_spherical, num_radial, 5, envelope_exponent)
 
         self.rbf_g_mlp = MLP([16, self.dim])
         self.rbf_l_mlp = MLP([16, self.dim])

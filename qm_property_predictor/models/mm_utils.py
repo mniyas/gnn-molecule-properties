@@ -7,9 +7,8 @@ from torch_geometric.nn.models.dimenet_utils import bessel_basis, real_sph_harm
 
 
 class Envelope(torch.nn.Module):
-    def __init__(self, exponent, architecture="DimeNet"):
+    def __init__(self, exponent):
         super().__init__()
-        self.architecture = architecture
         self.p = exponent
         self.a = -(self.p + 1) * (self.p + 2) / 2
         self.b = self.p * (self.p + 2)
@@ -21,18 +20,15 @@ class Envelope(torch.nn.Module):
         x_pow_p1 = x_pow_p0 * x
         x_pow_p2 = x_pow_p1 * x
         env_val = 1.0 / x + a * x_pow_p0 + b * x_pow_p1 + c * x_pow_p2
-        if self.architecture == "DimeNet":
-            return env_val
-        else:
-            zero = torch.zeros_like(x)
-            return torch.where(x < 1, env_val, zero)
+        zero = torch.zeros_like(x)
+        return torch.where(x < 1, env_val, zero)
 
 
 class BesselBasisLayer(torch.nn.Module):
-    def __init__(self, architecture, num_radial, cutoff=5.0, envelope_exponent=5):
+    def __init__(self, num_radial, cutoff=5.0, envelope_exponent=5):
         super().__init__()
         self.cutoff = cutoff
-        self.envelope = Envelope(envelope_exponent, architecture)
+        self.envelope = Envelope(envelope_exponent)
 
         self.freq = torch.nn.Parameter(torch.Tensor(num_radial))
 
@@ -49,13 +45,13 @@ class BesselBasisLayer(torch.nn.Module):
 
 
 class SphericalBasisLayer(torch.nn.Module):
-    def __init__(self, architecture, num_spherical, num_radial, cutoff=5.0, envelope_exponent=5):
+    def __init__(self, num_spherical, num_radial, cutoff=5.0, envelope_exponent=5):
         super().__init__()
         assert num_radial <= 64
         self.num_spherical = num_spherical
         self.num_radial = num_radial
         self.cutoff = cutoff
-        self.envelope = Envelope(envelope_exponent, architecture)
+        self.envelope = Envelope(envelope_exponent)
 
         bessel_forms = bessel_basis(num_spherical, num_radial)
         sph_harm_forms = real_sph_harm(num_spherical)

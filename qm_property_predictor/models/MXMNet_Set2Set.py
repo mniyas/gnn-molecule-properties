@@ -30,7 +30,7 @@ class SiLU(nn.Module):
 def MLP(channels):
     return nn.Sequential(
         *[
-            nn.Sequential(nn.Linear(channels[i - 1], channels[i]), nn.ReLU())
+            nn.Sequential(nn.Linear(channels[i - 1], channels[i]), nn.Sigmoid())
             for i in range(1, len(channels))
         ]
     )
@@ -190,9 +190,9 @@ class MXMNetSet2Set(nn.Module):
 
         self.embeddings = nn.Parameter(torch.ones((5, self.dim)))
 
-        self.rbf_l = BesselBasisLayer("MXMNet", 16, 5, envelope_exponent)
-        self.rbf_g = BesselBasisLayer("MXMNet", 16, self.cutoff, envelope_exponent)
-        self.sbf = SphericalBasisLayer("MXMNet", num_spherical, num_radial, 5, envelope_exponent)
+        self.rbf_l = BesselBasisLayer(16, 5, envelope_exponent)
+        self.rbf_g = BesselBasisLayer(16, self.cutoff, envelope_exponent)
+        self.sbf = SphericalBasisLayer(num_spherical, num_radial, 5, envelope_exponent)
 
         self.rbf_g_mlp = MLP([16, self.dim])
         self.rbf_l_mlp = MLP([16, self.dim])
@@ -209,8 +209,9 @@ class MXMNetSet2Set(nn.Module):
             self.local_layers.append(Local_MP(self.dim))
 
         self.set2set = Set2Set(self.dim, processing_steps=3)
-        self.lin1 = torch.nn.Linear(2 * self.dim, self.dim)
-        self.lin2 = torch.nn.Linear(self.dim, 1)
+        self.lin1 = torch.nn.Linear(self.dim * 2, self.dim // 2)
+        self.lin2 = torch.nn.Linear(self.dim // 2, 1)
+        self.activation = nn.Sigmoid()
         self.init()
 
     def init(self):
@@ -316,7 +317,7 @@ class MXMNetSet2Set(nn.Module):
 
         # Readout
         output = self.set2set(h, data.batch)
-        output = F.relu(self.lin1(output))
+        output = self.activation(self.lin1(output))
         output = self.lin2(output)
         return output
 
