@@ -1,6 +1,0 @@
-- Filters
-    - Dropdown to select molecule
-    - Buttons to input new molecule
-- Dashboard
-    - Interactive 3D image of molecule
-    - Show the molecular property values

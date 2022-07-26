@@ -170,22 +170,22 @@ class BaseLitModel(pl.LightningModule):  # pylint: disable=too-many-ancestors
             on_epoch=True,
             prog_bar=True,
         )
-        # return output, batch.y
+        return output, batch.y
 
-    # def validation_epoch_end(self, validation_step_outputs):
-    #     error = 0
-    #     num_total = 0
-    #     for output, true_val in validation_step_outputs:
-    #         error += (output - true_val).abs().sum().item()
-    #         num_total += output.shape[0]
-    #     val_loss = val_loss / num_total
-    #     self.log(
-    #         "val_mae_weighted",
-    #         val_loss,
-    #         on_step=True,
-    #         on_epoch=True,
-    #         prog_bar=True,
-    #     )
+    def validation_epoch_end(self, validation_step_outputs):
+        error = 0
+        num_total = 0
+        for output, true_val in validation_step_outputs:
+            error += (output - true_val).abs().sum().item()
+            num_total += output.shape[0]
+        val_loss = error / num_total
+        self.log(
+            "val_mae_weighted",
+            val_loss,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+        )
 
     def test_step(self, batch, batch_idx):  # pylint: disable=unused-argument
         output = self(batch)
