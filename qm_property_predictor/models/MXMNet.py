@@ -8,7 +8,7 @@ from torch_geometric.utils import add_self_loops, remove_self_loops
 from torch_scatter import scatter
 from torch_sparse import SparseTensor
 
-from .mm_utils import BesselBasisLayer, SphericalBasisLayer
+from .mm_utils import DAGNN, BesselBasisLayer, SphericalBasisLayer
 
 DIM = 128
 N_LAYER = 6
@@ -219,6 +219,7 @@ class MXMNet(nn.Module):
         num_spherical = self.args.get("num_spherical", NUM_SPHERICAL)
         num_radial = self.args.get("num_radial", NUM_RADIAL)
         envelope_exponent = self.args.get("envelope_exponent", ENVELOPE_EXPONENT)
+        self.dagnn_enabled = self.args.get("dagnn", False)
 
         self.embeddings = nn.Parameter(torch.ones((5, self.dim)))
 
@@ -240,6 +241,9 @@ class MXMNet(nn.Module):
         for layer in range(self.n_layer):
             self.local_layers.append(Local_MP(self.dim))
 
+        self.dagnn = DAGNN(5, self.dim)
+        self.graph_pred_linear = torch.nn.Linear(self.dim, 1)
+        self.pool = global_add_pool
         self.init()
 
     def init(self):
@@ -281,10 +285,6 @@ class MXMNet(nn.Module):
     def forward(self, data):
         batch, x, pos, edge_index = (data.batch, data.x, data.pos, data.edge_index)
         x = torch.argmax(x[:, :5], dim=1)
-        # x = data.x
-        # edge_index = data.edge_index
-        # pos = data.pos
-        # batch = data.batch
         # Initialize node embeddings
         h = torch.index_select(self.embeddings, 0, x.long())
 
@@ -348,7 +348,12 @@ class MXMNet(nn.Module):
             node_sum += t
 
         # Readout
-        output = global_add_pool(node_sum, batch)
+        if self.dagnn_enabled:
+            h = self.dagnn(h, edge_index)
+            h = self.pool(h, data.batch)
+            output = self.graph_pred_linear(h)
+        else:
+            output = self.pool(node_sum, batch)
         return output
 
     @staticmethod
@@ -364,4 +369,5 @@ class MXMNet(nn.Module):
         parser.add_argument("--num_spherical", type=int, default=NUM_SPHERICAL)
         parser.add_argument("--num_radial", type=int, default=NUM_RADIAL)
         parser.add_argument("--envelope_exponent", type=int, default=ENVELOPE_EXPONENT)
+        parser.add_argument("--dagnn", type=bool, default=False)
         return parser

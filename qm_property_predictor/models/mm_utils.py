@@ -3,6 +3,8 @@ from math import sqrt
 
 import sympy as sym
 import torch
+from torch_geometric.nn import MessagePassing
+from torch_geometric.nn.conv.gcn_conv import gcn_norm
 from torch_geometric.nn.models.dimenet_utils import bessel_basis, real_sph_harm
 
 
@@ -81,3 +83,49 @@ class SphericalBasisLayer(torch.nn.Module):
         n, k = self.num_spherical, self.num_radial
         out = (rbf[idx_kj].view(-1, n, k) * cbf.view(-1, n, 1)).view(-1, n * k)
         return out
+
+
+class DAGNN(MessagePassing):
+    def __init__(self, K, emb_dim, normalize=True, add_self_loops=True):
+        super(DAGNN, self).__init__()
+        self.K = K
+        self.normalize = normalize
+        self.add_self_loops = add_self_loops
+
+        self.proj = torch.nn.Linear(emb_dim, 1)
+
+        self._cached_edge_index = None
+
+    def forward(self, x, edge_index, edge_weight=None):
+        if self.normalize:
+            edge_index, norm = gcn_norm(  # yapf: disable
+                edge_index,
+                edge_weight,
+                x.size(self.node_dim),
+                False,
+                self.add_self_loops,
+                dtype=x.dtype,
+            )
+
+        preds = []
+        preds.append(x)
+        for k in range(self.K):
+            x = self.propagate(edge_index, x=x, norm=norm)
+            preds.append(x)
+
+        pps = torch.stack(preds, dim=1)
+        retain_score = self.proj(pps)
+        retain_score = retain_score.squeeze()
+        retain_score = torch.sigmoid(retain_score)
+        retain_score = retain_score.unsqueeze(1)
+        out = torch.matmul(retain_score, pps).squeeze()
+        return out
+
+    def message(self, x_j, norm):
+        return norm.view(-1, 1) * x_j
+
+    def __repr__(self):
+        return "{}(K={})".format(self.__class__.__name__, self.K)
+
+    def reset_parameters(self):
+        self.proj.reset_parameters()

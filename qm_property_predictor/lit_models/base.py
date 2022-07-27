@@ -182,7 +182,6 @@ class BaseLitModel(pl.LightningModule):  # pylint: disable=too-many-ancestors
         self.log(
             "val_mae_weighted",
             val_loss,
-            on_step=True,
             on_epoch=True,
             prog_bar=True,
         )
