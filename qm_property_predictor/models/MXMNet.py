@@ -8,7 +8,7 @@ from torch_geometric.utils import add_self_loops, remove_self_loops
 from torch_scatter import scatter
 from torch_sparse import SparseTensor
 
-from .mm_utils import DAGNN, BesselBasisLayer, SphericalBasisLayer
+from .mm_utils import DAGNN, AuxiliaryLayer, BesselBasisLayer, SphericalBasisLayer
 
 DIM = 128
 N_LAYER = 6
@@ -16,39 +16,6 @@ CUTOFF = 5.0
 NUM_SPHERICAL = 7
 NUM_RADIAL = 6
 ENVELOPE_EXPONENT = 5
-
-
-class EMA:
-    def __init__(self, model, decay):
-        self.decay = decay
-        self.shadow = {}
-        self.original = {}
-
-        # Register model parameters
-        for name, param in model.named_parameters():
-            if param.requires_grad:
-                self.shadow[name] = param.data.clone()
-
-    def __call__(self, model, num_updates=99999):
-        decay = min(self.decay, (1.0 + num_updates) / (10.0 + num_updates))
-        for name, param in model.named_parameters():
-            if param.requires_grad:
-                assert name in self.shadow
-                new_average = (1.0 - decay) * param.data + decay * self.shadow[name]
-                self.shadow[name] = new_average.clone()
-
-    def assign(self, model):
-        for name, param in model.named_parameters():
-            if param.requires_grad:
-                assert name in self.shadow
-                self.original[name] = param.data.clone()
-                param.data = self.shadow[name]
-
-    def resume(self, model):
-        for name, param in model.named_parameters():
-            if param.requires_grad:
-                assert name in self.shadow
-                param.data = self.original[name]
 
 
 class SiLU(nn.Module):
@@ -220,6 +187,8 @@ class MXMNet(nn.Module):
         num_radial = self.args.get("num_radial", NUM_RADIAL)
         envelope_exponent = self.args.get("envelope_exponent", ENVELOPE_EXPONENT)
         self.dagnn_enabled = self.args.get("dagnn", False)
+        self.virtual_node_enabled = self.args.get("virtual_node", False)
+        self.auxiliary_layer_enabled = self.args.get("auxiliary_layer", False)
 
         self.embeddings = nn.Parameter(torch.ones((5, self.dim)))
 
@@ -233,14 +202,31 @@ class MXMNet(nn.Module):
         self.sbf_1_mlp = MLP([num_spherical * num_radial, self.dim])
         self.sbf_2_mlp = MLP([num_spherical * num_radial, self.dim])
 
-        self.global_layers = torch.nn.ModuleList()
-        for layer in range(self.n_layer):
-            self.global_layers.append(Global_MP(self.dim))
+        if not self.virtual_node_enabled:
+            self.global_layers = torch.nn.ModuleList()
+            for layer in range(self.n_layer):
+                self.global_layers.append(Global_MP(self.dim))
 
         self.local_layers = torch.nn.ModuleList()
         for layer in range(self.n_layer):
             self.local_layers.append(Local_MP(self.dim))
 
+        if self.virtual_node_enabled:
+            self.virtualnode_embedding = nn.Embedding(1, self.dim)
+            self.mlp_virtualnode_layers = nn.ModuleList()
+            for layer in range(self.n_layer):
+                self.mlp_virtualnode_layers.append(
+                    nn.Sequential(
+                        nn.Linear(self.dim, self.dim),
+                        nn.BatchNorm1d(self.dim),
+                        nn.Sigmoid(),
+                        nn.Linear(self.dim, self.dim),
+                        nn.BatchNorm1d(self.dim),
+                        nn.Sigmoid(),
+                    )
+                )
+
+        self.mpnn = AuxiliaryLayer(self.dim)
         self.dagnn = DAGNN(5, self.dim)
         self.graph_pred_linear = torch.nn.Linear(self.dim, 1)
         self.pool = global_add_pool
@@ -338,22 +324,46 @@ class MXMNet(nn.Module):
         sbf_2 = self.sbf_2_mlp(sbf_2)
 
         # Perform the message passing schemes
+        if self.virtual_node_enabled:
+            virtualnode_embedding = self.virtualnode_embedding(
+                torch.zeros(batch[-1].item() + 1).to(edge_index.dtype).to(edge_index.device)
+            )
         node_sum = 0
-
         for layer in range(self.n_layer):
-            h = self.global_layers[layer](h, rbf_g, edge_index_g)
+            # Do not add global layer if Virtual Node is present
+            if not self.virtual_node_enabled:
+                # Message passing through global layers
+                h = self.global_layers[layer](h, rbf_g, edge_index_g)
+            # Message passing through local layers
             h, t = self.local_layers[layer](
                 h, rbf_l, sbf_1, sbf_2, idx_kj, idx_ji, idx_jj, idx_ji_2, edge_index_l
             )
             node_sum += t
-
+            if self.virtual_node_enabled:
+                if layer < self.n_layer:
+                    virtualnode_embedding_temp = global_add_pool(h, batch) + virtualnode_embedding
+                    virtualnode_embedding = self.mlp_virtualnode_layers[layer](
+                        virtualnode_embedding_temp
+                    )
+                    h = h + virtualnode_embedding[batch]
+        # Add Auxiliary Information
+        if self.auxiliary_layer_enabled:
+            a_h = self.mpnn(data)
+            a_h = self.pool(a_h, batch)
         # Readout
         if self.dagnn_enabled:
             h = self.dagnn(h, edge_index)
             h = self.pool(h, data.batch)
+            if self.auxiliary_layer_enabled:
+                h = h + a_h
             output = self.graph_pred_linear(h)
         else:
-            output = self.pool(node_sum, batch)
+            if self.auxiliary_layer_enabled:
+                h = self.pool(h, batch)
+                h = h + a_h
+                output = self.graph_pred_linear(h)
+            else:
+                output = self.pool(node_sum, batch)
         return output
 
     @staticmethod
@@ -365,9 +375,14 @@ class MXMNet(nn.Module):
         parser.add_argument(
             "--cutoff", type=float, default=CUTOFF, help="Distance cutoff used in the global layer"
         )
-        # TODO: Add help description
         parser.add_argument("--num_spherical", type=int, default=NUM_SPHERICAL)
         parser.add_argument("--num_radial", type=int, default=NUM_RADIAL)
         parser.add_argument("--envelope_exponent", type=int, default=ENVELOPE_EXPONENT)
-        parser.add_argument("--dagnn", type=bool, default=False)
+        parser.add_argument("--dagnn", type=bool, default=False, help="Flag to enable DAGNN")
+        parser.add_argument(
+            "--virtual_node", type=bool, default=False, help="Flag to use Virtual Node Module"
+        )
+        parser.add_argument(
+            "--auxiliary_layer", type=bool, default=False, help="Flag to use Auxiliary Layer"
+        )
         return parser

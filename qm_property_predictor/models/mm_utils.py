@@ -1,9 +1,13 @@
 from math import pi as PI
 from math import sqrt
+from typing import Any, Dict
 
 import sympy as sym
 import torch
-from torch_geometric.nn import MessagePassing
+import torch.nn as nn
+import torch.nn.functional as F
+from torch_geometric.data import Data
+from torch_geometric.nn import MessagePassing, NNConv, global_add_pool
 from torch_geometric.nn.conv.gcn_conv import gcn_norm
 from torch_geometric.nn.models.dimenet_utils import bessel_basis, real_sph_harm
 
@@ -129,3 +133,41 @@ class DAGNN(MessagePassing):
 
     def reset_parameters(self):
         self.proj.reset_parameters()
+
+
+class AuxiliaryLayer(torch.nn.Module):
+    def __init__(self, dim) -> None:
+        super().__init__()
+        num_node_features = 11
+        num_edge_features = 4
+        conv1_net = nn.Sequential(
+            nn.Linear(num_edge_features, dim),
+            nn.ReLU(),
+            nn.Linear(dim, num_node_features * dim),
+        )
+        conv2_net = nn.Sequential(
+            nn.Linear(num_edge_features, dim), nn.ReLU(), nn.Linear(dim, dim * dim)
+        )
+        self.conv1 = NNConv(num_node_features, dim, conv1_net)
+        self.conv2 = NNConv(dim, dim, conv2_net)
+
+    def forward(self, data: Data) -> torch.Tensor:
+        """
+        Parameters
+        ----------
+        data
+            Torch Geometric Data object with attributes: batch, x, edge_index, edge_attr
+
+        Returns
+        -------
+        torch.Tensor
+            of dimensions (B, 1)
+        """
+        x, edge_index, edge_attr = (
+            data.x,
+            data.edge_index,
+            data.edge_attr,
+        )
+        x = F.relu(self.conv1(x, edge_index, edge_attr))
+        x = F.relu(self.conv2(x, edge_index, edge_attr))
+        return x
