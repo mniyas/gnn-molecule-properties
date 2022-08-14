@@ -226,7 +226,7 @@ class MXMNet(nn.Module):
                     )
                 )
 
-        self.mpnn = AuxiliaryLayer(self.dim)
+        self.auxiliary_layer = AuxiliaryLayer(self.dim)
         self.dagnn = DAGNN(5, self.dim)
         self.graph_pred_linear = torch.nn.Linear(self.dim, 1)
         self.pool = global_add_pool
@@ -348,7 +348,7 @@ class MXMNet(nn.Module):
                     h = h + virtualnode_embedding[batch]
         # Add Auxiliary Information
         if self.auxiliary_layer_enabled:
-            a_h = self.mpnn(data)
+            a_h = self.auxiliary_layer(data)
             a_h = self.pool(a_h, batch)
         # Readout
         if self.dagnn_enabled:

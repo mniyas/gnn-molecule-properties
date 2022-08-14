@@ -89,6 +89,7 @@ class SphericalBasisLayer(torch.nn.Module):
         return out
 
 
+# Reference: https://github.com/divelab/MoleculeX/blob/master/BasicProp/kddcup2021/deeper_dagnn.py#L13
 class DAGNN(MessagePassing):
     def __init__(self, K, emb_dim, normalize=True, add_self_loops=True):
         super(DAGNN, self).__init__()
@@ -135,6 +136,7 @@ class DAGNN(MessagePassing):
         self.proj.reset_parameters()
 
 
+# Reference: https://github.com/rasbt/machine-learning-book/blob/main/ch18/ch18_part2.py
 class AuxiliaryLayer(torch.nn.Module):
     def __init__(self, dim) -> None:
         super().__init__()
